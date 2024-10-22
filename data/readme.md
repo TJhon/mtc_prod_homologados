@@ -1,0 +1,15 @@
+- Data
+  - Brand/
+    - list_brand
+    - all_brands
+    - name/
+      - brand_name1
+      - brand_name2
+  - manufacturer/
+    - list_manufacturer_brands
+  - function/
+    - list_function
+  - type/
+    - list_types
+  - exclude_words
+    - words

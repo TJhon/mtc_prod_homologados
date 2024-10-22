@@ -22,12 +22,33 @@
 #   "credentials": "include"
 # });
 
+from MTC.search_in_ import SearchEngine
+
 import requests, pandas as pd
 from bs4 import BeautifulSoup
 from environ import url
 import re, math
 from io import StringIO
 from tqdm import tqdm
+
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# HEAD
+#     Nº Tipo Nº Certificado      Marca      Modelo                       Fabricante                                 Función       Fecha  Unnamed: 8
+# 0    1    H      TRFM46262       POCO   M2004J11G   XIAOMI COMMUNICATIONS CO., LTD  Terminal portátil para telefonía móvil  20/05/2020         NaN
+
+new_names = [
+    "n",
+    "type",
+    "cert",
+    "brand",
+    "model",
+    "manufacturer",
+    "function",
+    "date",
+    "nan",
+]
 
 
 class TelMTC:
@@ -73,7 +94,7 @@ class TelMTC:
         data = pd.read_html(StringIO(str(table_data)))[0]
         return data
 
-    def get_data(self):
+    def fetch_data(self):
         content_html = self.first_page_response.content
         total_pages = self.total_pages
         html = self.to_soup(content_html)
@@ -83,9 +104,47 @@ class TelMTC:
             response_n = self.update_params(page)
             html_n = self.to_soup(response_n.content)
             data.append(self.html_to_pandas(html_n))
-        return pd.concat(data, ignore_index=True)
+
+        data_final = pd.concat(data, ignore_index=True)
+        data_final.columns = new_names
+        data_final.drop(columns=["n", "nan"], inplace=True)
+        # tqdm.pandas()
+        # d = data_final = data_final.head(5)
+        comercial_name = {}
+        comercial_name_list = []
+        querys = []
+
+        def fetch_commercial_name(row):
+            brand, model = row["brand"], row["model"]
+            query = brand + model
+            if query in comercial_name:
+                return comercial_name[query]
+
+            comercial_name_search = SearchEngine(brand, model).run()
+            comercial_name[query] = comercial_name_search
+            return comercial_name_search
+
+        # Procesamiento paralelo no disponible por pasar el limite de peticiones
+
+        # Alternativa solo buscar si no existe los datos para ese modelo y marca
+        for index, row in tqdm(data_final.iterrows(), total=data_final.shape[0]):
+            brand, model = row["brand"], row["model"]
+            query = brand + model
+            # print(query)
+            if query in querys:
+                comercial_name_list.append(comercial_name[query])
+                continue
+
+            querys.append(query)
+
+            comercial_name_search = SearchEngine(brand, model).run()
+            comercial_name[query] = comercial_name_search
+            comercial_name_list.append(comercial_name_search)
+
+        data_final["commercial_name"] = comercial_name_list
+
+        return data_final
 
 
-data = TelMTC(marca="samsung").get_data()
-
+data = TelMTC(marca="poco").fetch_data()
 print(data)
