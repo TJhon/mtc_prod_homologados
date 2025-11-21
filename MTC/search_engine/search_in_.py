@@ -1,19 +1,20 @@
-from googlesearch import search as search_google
 from urllib.parse import urlparse, unquote
 import math
 import itertools
 import re
 from collections import Counter
-from duckduckgo_search import DDGS
+from ddgs import DDGS
+from rich import print
 
 
 class SearchEngine:
     def __init__(self, brand, model, num_results=20, operator="ddg"):
         self.brand = brand.lower()
-        self.model = model
+        self.model = model.lower()
         self.num_results = num_results
-        self.search_results = []  # urls
+        self.search_results = []  # Lista de diccionarios con href y title
         self.parsed_urls = []
+        self.parsed_titles = []
         self.filtered_strings = []
         self.split_words = []
         self.result_string = ""
@@ -21,7 +22,7 @@ class SearchEngine:
 
     def search(self):
         """
-        Perform a Google search and store the result URLs.
+        Perform a search and store the result URLs and titles.
         """
         try:
             query = f"{self.brand} {self.model}"
@@ -29,13 +30,10 @@ class SearchEngine:
                 results = DDGS().text(
                     query, max_results=self.num_results, region="ue-es"
                 )
-                # results [{title, href, body}]
-                results = [result["href"].lower() for result in results]
-
-                self.search_results = results
-            else:
+                # Guardar tanto href como title
                 self.search_results = [
-                    url for url in search_google(query, num_results=self.num_results)
+                    {"href": result["href"].lower(), "title": result["title"].lower()}
+                    for result in results
                 ]
         except Exception as e:
             print(f"An error occurred during search: {e}")
@@ -45,15 +43,33 @@ class SearchEngine:
         """
         Parse and decode the URLs from the search results.
         """
-        self.parsed_urls = [unquote(urlparse(url).path) for url in self.search_results]
+        self.parsed_urls = [
+            unquote(urlparse(result["href"]).path) for result in self.search_results
+        ]
+
+    def parse_titles(self):
+        """
+        Extract titles from search results.
+        """
+        self.parsed_titles = [result["title"] for result in self.search_results]
 
     def filter_by_brand(self):
         """
-        Filter parsed URLs by the brand name.
+        Filter parsed URLs and titles by the brand name.
+        Combine both sources for analysis.
         """
-        self.filtered_strings = [
+        # Filtrar URLs que contengan la marca
+        filtered_urls = [
             string for string in self.parsed_urls if self.brand in string.lower()
         ]
+        
+        # Filtrar títulos que contengan la marca
+        filtered_titles = [
+            string for string in self.parsed_titles if self.brand in string.lower()
+        ]
+        
+        # Combinar ambas fuentes
+        self.filtered_strings = filtered_urls + filtered_titles
 
     def split_strings(self):
         """
@@ -75,8 +91,10 @@ class SearchEngine:
         Calculate the threshold for word frequency filtering.
         """
         total_matches = len(self.filtered_strings)
+        if total_matches == 0:
+            return 1
         threshold_floor = math.floor(total_matches / 10)
-        return max(1, int(threshold_floor / 2 * 10))
+        return max(1, int(threshold_floor / 2 * 5))
 
     def count_and_filter_frequent_words(self, threshold):
         """
@@ -100,25 +118,23 @@ class SearchEngine:
         try:
             self.search()
             self.parse_urls()
+            self.parse_titles()  # Nueva función
             self.filter_by_brand()
             self.split_strings()
             self.remove_empty_strings()
             self.generate_result_string()
             return self.result_string
-        except:
+        except Exception as e:
+            print(f"Error: {e}")
             return None
 
 
-# Example usage
-# if __name__ == "__main__":
-#     brand_search = GoogleBrandSearch(brand="xiaomi", model="RB02")
-#     result = brand_search.run()
-#     print(result)
-#     result22 = GoogleBrandSearch(brand="xiaomi", model="MDZ-28-AA").run()
-#     print(result22)
-#     result22 = GoogleBrandSearch(brand="poco", model="m2004j11g").run()
-#     print(result22)
-
-# a = "xiaomi poco pro f2 m2004j11g en xiaomi_poco_f2_pro 10220 php phone where to buy compare x5 5g device data devices 58413939"
-# # re.split(r"\W+", string)
-# print(re.split(r"\W+", a))
+if __name__ == "__main__":
+    # result = SearchEngine(brand='GOOGLE', model='GB7N6').run()
+    # print(f"Google GB7N6: {result}")
+    
+    result = SearchEngine(brand='xiaomi', model='mdz-28-aa').run()
+    print(f"Xiaomi mdz-28-aa: {result}")
+    
+    # result22 = SearchEngine(brand="poco", model="m2004j11g").run()
+    # print(f"POCO m2004j11g: {result22}")
